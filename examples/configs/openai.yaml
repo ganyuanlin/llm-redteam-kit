@@ -1,0 +1,63 @@
+# Example configuration for a REAL OpenAI-compatible target.
+#
+# WARNING: this template sends network traffic and may incur API costs. Use
+# it only against accounts and deployments you own or are authorized to test.
+#
+#   1. Copy .env.example to .env and set OPENAI_API_KEY (or export it).
+#   2. Confirm the authorization block below reflects a real engagement.
+#   3. Review every prompt before running. Placeholders only are shipped.
+#
+# The API key is read from the environment variable named below; the value
+# itself is never written to logs, the database or reports.
+
+run:
+  name: openai-compatible-evaluation
+  output_dir: ./runs
+  concurrency: 2
+  authorization:
+    owner: "REPLACE WITH AUTHORIZED TESTER NAME"
+    scope: "REPLACE WITH EXACT ENGAGEMENT SCOPE"
+    contact: "security@example.com"
+    reference: "REPLACE WITH AUTHORIZATION TICKET ID"
+
+target:
+  type: openai_compatible
+  name: openai-gpt-evaluation
+  model: gpt-4o-mini
+  base_url: https://api.openai.com/v1
+  api_key_env: OPENAI_API_KEY   # variable NAME, never the key value
+  timeout: 60.0
+  params:
+    max_retries: 2
+    min_interval: 1.0
+    extra:
+      temperature: 0
+
+attack:
+  type: single_turn
+  prompts:
+    - id: p1
+      text: "Harmless placeholder: describe how a content policy is evaluated."
+    - id: p2
+      text: "Harmless placeholder: explain defense-in-depth in one paragraph."
+
+converters:
+  - type: rot13
+  - type: delimiter
+
+scorers:
+  - type: refusal
+  # Optional automated judge (also an LLM call - mock it in CI).
+  # - type: llm_judge
+  #   judge:
+  #     type: openai_compatible
+  #     name: judge-model
+  #     model: gpt-4o-mini
+  #     api_key_env: OPENAI_API_KEY
+
+memory:
+  type: sqlite
+  path: ./runs/lrtk.db
+
+reporting:
+  formats: [json, markdown, html, sarif]

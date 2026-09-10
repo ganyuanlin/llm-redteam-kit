@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM Red Team Kit — 授权式 LLM 红队测试框架</title>
+<meta name="description" content="LLM Red Team Kit (LRTK)：模块化、可复现、可扩展的 LLM 红队测试框架。MockTarget 离线演示无需 API Key，支持 SARIF/HTML/Markdown/JSON 报告。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9B%A1%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0b1120;
+    --bg-2: #0f172a;
+    --panel: #131c31;
+    --panel-2: #1a2440;
+    --border: #263453;
+    --text: #e6edf7;
+    --muted: #93a4c3;
+    --accent: #38bdf8;
+    --accent-2: #818cf8;
+    --accent-3: #34d399;
+    --danger: #f87171;
+    --amber: #fbbf24;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 1.5rem; }
+
+  /* ---------- background glow ---------- */
+  .glow {
+    position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
+  }
+  .glow::before, .glow::after {
+    content: ""; position: absolute; width: 60rem; height: 60rem; border-radius: 50%;
+    filter: blur(120px); opacity: .18;
+  }
+  .glow::before { background: var(--accent); top: -25rem; left: -15rem; }
+  .glow::after { background: var(--accent-2); top: 15rem; right: -20rem; }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(11, 17, 32, .82); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 4rem; }
+  .brand { display: flex; align-items: center; gap: .6rem; font-weight: 800; font-size: 1.05rem; color: var(--text); }
+  .brand:hover { text-decoration: none; }
+  .brand .logo {
+    width: 2rem; height: 2rem; border-radius: 8px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    font-size: 1.05rem;
+  }
+  .brand small { color: var(--muted); font-weight: 600; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; }
+  .nav-links { display: flex; align-items: center; gap: 1.6rem; font-size: .92rem; }
+  .nav-links a { color: var(--muted); }
+  .nav-links a:hover { color: var(--text); text-decoration: none; }
+  @media (max-width: 760px) { .nav-links a:not(.btn) { display: none; } }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .62rem 1.25rem; border-radius: 10px; font-weight: 700; font-size: .92rem;
+    border: 1px solid transparent; transition: transform .15s ease, box-shadow .15s ease, background .15s;
+    cursor: pointer; text-decoration: none !important;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #08111f; box-shadow: 0 8px 24px -8px rgba(56, 189, 248, .55);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 28px -8px rgba(129, 140, 248, .6); }
+  .btn-ghost { border-color: var(--border); color: var(--text); background: rgba(255,255,255,.03); }
+  .btn-ghost:hover { background: rgba(255,255,255,.07); transform: translateY(-2px); }
+  .btn svg { width: 1rem; height: 1rem; }
+
+  /* ---------- hero ---------- */
+  header.hero { padding: 5.5rem 0 3rem; }
+  .badge {
+    display: inline-flex; align-items: center; gap: .5rem;
+    border: 1px solid var(--border); background: rgba(56, 189, 248, .08);
+    color: var(--accent); font-size: .8rem; font-weight: 600;
+    padding: .35rem .9rem; border-radius: 999px; margin-bottom: 1.4rem;
+  }
+  .badge .dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--accent-3); box-shadow: 0 0 8px var(--accent-3); }
+  h1 {
+    font-size: clamp(2.2rem, 5.2vw, 3.6rem); line-height: 1.12; font-weight: 800;
+    letter-spacing: -.02em; margin-bottom: 1.2rem;
+  }
+  h1 .grad {
+    background: linear-gradient(90deg, var(--accent), var(--accent-2) 55%, #c084fc);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p.lead { font-size: 1.13rem; color: var(--muted); max-width: 46rem; margin-bottom: 2rem; }
+  .hero-cta { display: flex; flex-wrap: wrap; gap: .9rem; margin-bottom: 3rem; }
+
+  /* terminal */
+  .terminal {
+    border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+    background: #0a0f1e; box-shadow: 0 30px 80px -30px rgba(0,0,0,.8);
+    max-width: 48rem; text-align: left;
+  }
+  .term-bar {
+    display: flex; align-items: center; gap: .5rem; padding: .7rem 1rem;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  .term-bar .tbtn { width: .75rem; height: .75rem; border-radius: 50%; }
+  .tbtn.r { background: #ff5f57; } .tbtn.y { background: #febc2e; } .tbtn.g { background: #28c840; }
+  .term-title { margin-left: .6rem; font-family: var(--mono); font-size: .75rem; color: var(--muted); }
+  .term-body { padding: 1.1rem 1.3rem; font-family: var(--mono); font-size: .86rem; line-height: 1.8; min-height: 13.5rem; }
+  .term-line { white-space: pre-wrap; word-break: break-word; }
+  .term-line .prompt { color: var(--accent-3); }
+  .term-line .cmd { color: var(--text); }
+  .term-line .ok { color: var(--accent-3); }
+  .term-line .info { color: var(--accent); }
+  .term-line .dim { color: var(--muted); }
+  .term-line .warn { color: var(--amber); }
+  .cursor { display: inline-block; width: .55rem; height: 1.05rem; background: var(--accent); vertical-align: text-bottom; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---------- stats ---------- */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin: 3.5rem 0 1rem; }
+  .stat { background: var(--bg-2); padding: 1.5rem 1rem; text-align: center; }
+  .stat b { display: block; font-size: 1.9rem; font-weight: 800; background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .stat span { color: var(--muted); font-size: .85rem; }
+  @media (max-width: 700px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+
+  /* ---------- sections ---------- */
+  section { padding: 4.5rem 0; }
+  .sec-head { text-align: center; margin-bottom: 3rem; }
+  .sec-head .kicker { color: var(--accent); font-weight: 700; font-size: .82rem; letter-spacing: .18em; text-transform: uppercase; }
+  .sec-head h2 { font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 800; margin: .5rem 0 .8rem; letter-spacing: -.01em; }
+  .sec-head p { color: var(--muted); max-width: 44rem; margin: 0 auto; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.1rem; }
+  .card {
+    background: linear-gradient(180deg, var(--panel), var(--bg-2));
+    border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem;
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+  }
+  .card:hover { transform: translateY(-4px); border-color: rgba(56,189,248,.45); box-shadow: 0 18px 40px -20px rgba(56,189,248,.35); }
+  .card .icon {
+    width: 2.6rem; height: 2.6rem; border-radius: 10px; display: grid; place-items: center;
+    background: rgba(56,189,248,.1); border: 1px solid rgba(56,189,248,.25); margin-bottom: 1rem;
+  }
+  .card .icon svg { width: 1.35rem; height: 1.35rem; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .card h3 { font-size: 1.05rem; margin-bottom: .45rem; }
+  .card p { color: var(--muted); font-size: .9rem; }
+  .card code { font-family: var(--mono); font-size: .8rem; background: rgba(255,255,255,.06); padding: .1rem .4rem; border-radius: 5px; color: var(--accent); }
+
+  /* ---------- pipeline ---------- */
+  .pipeline {
+    display: flex; flex-direction: column; gap: .8rem; align-items: stretch;
+  }
+  .flow-row { display: flex; gap: .8rem; flex-wrap: wrap; justify-content: center; align-items: center; }
+  .node {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: .85rem 1.3rem; font-weight: 700; font-size: .92rem; text-align: center; min-width: 8.5rem;
+  }
+  .node small { display: block; font-weight: 500; color: var(--muted); font-size: .76rem; margin-top: .15rem; }
+  .node.core { border-color: rgba(129,140,248,.5); background: linear-gradient(135deg, rgba(129,140,248,.16), rgba(56,189,248,.08)); }
+  .node.out  { border-color: rgba(52,211,153,.45); }
+  .arrow { color: var(--accent); font-size: 1.3rem; font-family: var(--mono); }
+  @media (max-width: 700px) { .arrow { transform: rotate(90deg); } }
+
+  /* ---------- code blocks ---------- */
+  .codeblock {
+    position: relative; background: #0a0f1e; border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden;
+  }
+  .codeblock pre { padding: 1.3rem 1.4rem; font-family: var(--mono); font-size: .85rem; line-height: 1.75; overflow-x: auto; }
+  .codeblock .cmt { color: #5b6b8c; }
+  .codeblock .k { color: var(--accent-2); }
+  .codeblock .s { color: var(--accent-3); }
+  .codeblock .f { color: var(--accent); }
+  .copy-btn {
+    position: absolute; top: .7rem; right: .7rem; background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--muted); border-radius: 8px; padding: .3rem .7rem; font-size: .75rem; cursor: pointer; font-family: var(--sans);
+  }
+  .copy-btn:hover { color: var(--text); border-color: var(--accent); }
+
+  /* ---------- compliance ---------- */
+  .compliance {
+    border: 1px solid rgba(248,113,113,.35); background: linear-gradient(135deg, rgba(248,113,113,.08), rgba(251,191,36,.05));
+    border-radius: 16px; padding: 2rem; display: grid; grid-template-columns: auto 1fr; gap: 1.4rem;
+  }
+  .compliance .shield {
+    width: 3.4rem; height: 3.4rem; border-radius: 12px; display: grid; place-items: center;
+    background: rgba(248,113,113,.12); border: 1px solid rgba(248,113,113,.35);
+  }
+  .compliance .shield svg { width: 1.7rem; height: 1.7rem; stroke: var(--danger); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .compliance h3 { margin-bottom: .5rem; }
+  .compliance ul { margin: .8rem 0 0 1.1rem; color: var(--muted); font-size: .92rem; }
+  .compliance li { margin: .3rem 0; }
+  @media (max-width: 700px) { .compliance { grid-template-columns: 1fr; } }
+
+  /* ---------- reports ---------- */
+  .report-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.1rem; }
+  .rcard { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 1.4rem; }
+  .rcard .tag { display: inline-block; font-family: var(--mono); font-size: .72rem; font-weight: 700; padding: .2rem .6rem; border-radius: 6px; margin-bottom: .8rem; }
+  .tag.json { background: rgba(52,211,153,.14); color: var(--accent-3); }
+  .tag.md { background: rgba(56,189,248,.14); color: var(--accent); }
+  .tag.html { background: rgba(129,140,248,.16); color: var(--accent-2); }
+  .tag.sarif { background: rgba(251,191,36,.14); color: var(--amber); }
+  .rcard h4 { margin-bottom: .35rem; font-size: .98rem; }
+  .rcard p { color: var(--muted); font-size: .86rem; }
+
+  /* ---------- CTA ---------- */
+  .final-cta { text-align: center; padding: 4rem 0; }
+  .final-cta h2 { font-size: clamp(1.6rem, 3vw, 2.3rem); margin-bottom: 1rem; font-weight: 800; }
+  .final-cta p { color: var(--muted); margin-bottom: 2rem; }
+
+  footer { border-top: 1px solid var(--border); padding: 2.2rem 0; color: var(--muted); font-size: .86rem; }
+  .foot-inner { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; align-items: center; }
+  .foot-inner a { color: var(--muted); }
+  .foot-inner a:hover { color: var(--text); }
+
+  /* reveal on scroll */
+  .reveal { opacity: 0; transform: translateY(22px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal.visible { opacity: 1; transform: none; }
+</style>
+</head>
+<body>
+<div class="glow"></div>
+
+<nav>
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top">
+      <span class="logo">🛡️</span>
+      <span>LRTK <small>Red Team Kit</small></span>
+    </a>
+    <div class="nav-links">
+      <a href="#features">特性</a>
+      <a href="#architecture">架构</a>
+      <a href="#quickstart">快速开始</a>
+      <a href="#compliance">合规</a>
+      <a class="btn btn-ghost" href="https://github.com/ganyuanlin/llm-redteam-kit" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div class="badge"><span class="dot"></span> 授权式 AI 安全测试 · Apache 2.0 开源</div>
+    <h1>为大语言模型做<span class="grad">系统化红队测试</span><br>可复现、可审计、开箱即用</h1>
+    <p class="lead">
+      LLM Red Team Kit 把越狱韧性、提示注入、系统提示泄露等安全评估，
+      沉淀为可复跑的工程化流水线：多目标适配、提示变换链、五种攻击策略、
+      归一化评分与 JSON / Markdown / HTML / SARIF 报告。
+      <strong style="color:var(--text)">默认演示完全离线，无需任何 API Key。</strong>
+    </p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="#quickstart">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        60 秒快速开始
+      </a>
+      <a class="btn btn-ghost" href="https://github.com/ganyuanlin/llm-redteam-kit" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        在 GitHub 上查看
+      </a>
+    </div>
+
+    <div class="terminal">
+      <div class="term-bar">
+        <span class="tbtn r"></span><span class="tbtn y"></span><span class="tbtn g"></span>
+        <span class="term-title">powershell — lrtk demo（离线 · 无需 API Key）</span>
+      </div>
+      <div class="term-body" id="terminal"><noscript><div class="term-line"><span class="dim">$ lrtk run --config examples/configs/demo.yaml</span></div></noscript></div>
+    </div>
+
+    <div class="stats reveal">
+      <div class="stat"><b>102</b><span>pytest 测试全绿</span></div>
+      <div class="stat"><b>95.3%</b><span>代码覆盖率</span></div>
+      <div class="stat"><b>0</b><span>演示所需 API Key</span></div>
+      <div class="stat"><b>31</b><span>内置可插拔组件</span></div>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">Modular by design</div>
+      <h2>一条流水线，六个可插拔维度</h2>
+      <p>所有组件都通过装饰器注册到类型化注册表，内置组件与第三方插件一视同仁；配置即代码，一次运行完整落库。</p>
+    </div>
+    <div class="cards">
+      <div class="card reveal">
+        <div class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+        <h3>5 种目标适配器</h3>
+        <p>离线 <code>mock</code>、OpenAI 兼容接口、Anthropic Messages、本地 Ollama、通用 HTTP/JSON 网关。统一超时、重试与限速策略。</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon"><svg viewBox="0 0 24 24"><path d="M4 7V5h16v2M9 12h6M7 17h10"/><path d="M4 7l2 12M20 7l-2 12"/></svg></div>
+        <h3>8 种提示转换器</h3>
+        <p>base64、ROT13、leetspeak、Unicode 转义、反转、角色扮演、分隔符、分块；支持 <code>|</code> 运算符自由串链。</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <h3>5 种攻击策略</h3>
+        <p><code>single_turn</code>、多轮渐进 <code>crescendo</code>、迭代细化 <code>pair</code>、剪枝树搜索 <code>tap</code>、遗传搜索 <code>genetic</code>。</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon"><svg viewBox="0 0 24 24"><path d="M12 20v-6M6 20v-4M18 20v-9"/><path d="M3 20h18"/><path d="M8 8l4-4 4 4"/></svg></div>
+        <h3>6 种评分器</h3>
+        <p>子串、正则、拒答检测、LLM 裁判、组合聚合（any/all）与人工复核；结论归一化为 <code>success/failure/refusal/unknown</code>。</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
+        <h3>3 种持久化后端</h3>
+        <p>内存、异步 SQLite（SQLAlchemy 2.0 + aiosqlite）与 JSONL 文件；提示、响应、评分、解析后配置全部可复现。</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg></div>
+        <h3>4 种报告格式</h3>
+        <p>JSON 全量归档、Markdown 评估报告、带图表的交互式 HTML，以及可直接进 CI 安全门禁的 <code>SARIF 2.1.0</code>。</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon"><svg viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg></div>
+        <h3>CLI 与 REST API</h3>
+        <p><code>lrtk run / report / init / serve</code> 命令齐全；FastAPI 服务提供 <code>/runs</code> 全生命周期接口。</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></div>
+        <h3>entry-point 插件系统</h3>
+        <p>自定义目标 / 转换器 / 攻击 / 评分器无需 fork：打装饰器、发布包、声明 <code>llm_redteam.plugins</code> 入口点即可。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="architecture">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">Pipeline</div>
+      <h2>一次评估的完整数据流</h2>
+      <p>编排器校验配置、组装组件；攻击策略驱动「变换 → 发送 → 评分」循环，结果实时落库，结束后一次性渲染多格式报告。</p>
+    </div>
+    <div class="pipeline reveal">
+      <div class="flow-row">
+        <div class="node">YAML / JSON 配置<small>授权信息 · 目标 · 提示词</small></div>
+        <span class="arrow">→</span>
+        <div class="node core">Orchestrator<small>校验 · 组装 · 编排</small></div>
+        <span class="arrow">→</span>
+        <div class="node core">Attack 策略<small>single_turn / crescendo / pair / tap / genetic</small></div>
+      </div>
+      <div class="flow-row">
+        <span class="arrow">↓</span>
+      </div>
+      <div class="flow-row">
+        <div class="node">Converters<small>变换链 · 保留原文快照</small></div>
+        <span class="arrow">→</span>
+        <div class="node">Target<small>mock / HTTP 后端</small></div>
+        <span class="arrow">→</span>
+        <div class="node">Scorers<small>归一化评分 · 失败降级 unknown</small></div>
+      </div>
+      <div class="flow-row">
+        <span class="arrow">↓</span>
+      </div>
+      <div class="flow-row">
+        <div class="node out">Memory<small>SQLite / JSONL · 可复跑</small></div>
+        <span class="arrow">+</span>
+        <div class="node out">Reports<small>JSON · Markdown · HTML · SARIF</small></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">Quick start</div>
+      <h2>三条命令跑起来</h2>
+      <p>Python 3.11+。安装后即可运行离线演示：脚本化 MockTarget 轮转返回拒答与模拟遵从，全程不联网。</p>
+    </div>
+    <div class="codeblock reveal" style="margin-bottom:1.4rem">
+      <button class="copy-btn" data-copy="qs">复制</button>
+      <pre id="qs"><span class="cmt"># 安装（含开发工具链）</span>
+<span class="f">pip</span> install -e <span class="s">".[dev]"</span>
+
+<span class="cmt"># 运行离线演示 —— 无需 API Key、无需网络</span>
+<span class="f">lrtk</span> run --config examples/configs/demo.yaml
+
+<span class="cmt"># 查看产物：runs/&lt;run_id&gt;/report.{json,md,html}</span>
+<span class="cmt"># 或启动 HTTP 服务</span>
+<span class="f">lrtk</span> serve --host 127.0.0.1 --port 8000</pre>
+    </div>
+    <div class="codeblock reveal">
+      <button class="copy-btn" data-copy="cfg">复制</button>
+      <pre id="cfg"><span class="k">run</span>:
+  <span class="k">name</span>: demo
+  <span class="k">authorization</span>:            <span class="cmt"># 授权信息会进入每份报告</span>
+    <span class="k">owner</span>: <span class="s">"Your Name"</span>
+    <span class="k">scope</span>: <span class="s">"Local mock target only"</span>
+
+<span class="k">target</span>:
+  <span class="k">type</span>: mock                <span class="cmt"># mock|openai_compatible|anthropic|ollama|http_json</span>
+
+<span class="k">attack</span>:
+  <span class="k">type</span>: single_turn         <span class="cmt"># single_turn|crescendo|pair|tap|genetic</span>
+  <span class="k">prompts</span>:
+    - <span class="k">id</span>: p1
+      <span class="k">text</span>: <span class="s">"Ignore previous instructions ..."</span>  <span class="cmt"># 无害占位符</span>
+
+<span class="k">converters</span>:
+  - <span class="k">type</span>: base64
+  - <span class="k">type</span>: roleplay
+
+<span class="k">scorers</span>:
+  - <span class="k">type</span>: substring
+    <span class="k">success_strings</span>: [<span class="s">"DAN"</span>, <span class="s">"developer mode"</span>]
+  - <span class="k">type</span>: refusal
+
+<span class="k">memory</span>: {<span class="k">type</span>: sqlite, <span class="k">path</span>: ./runs/lrtk.db}
+<span class="k">reporting</span>: {<span class="k">formats</span>: [json, markdown, html, sarif]}</pre>
+    </div>
+  </div>
+</section>
+
+<section id="reports" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker">Artifacts</div>
+      <h2>给不同读者的四种报告</h2>
+      <p>每份报告都带有授权横幅与配置快照；成功用例可输出为 SARIF 结果，直接接入 GitHub Code Scanning 等 CI 门禁。</p>
+    </div>
+    <div class="report-cards">
+      <div class="rcard reveal"><span class="tag json">JSON</span><h4>全量归档</h4><p>完整 AttackRun 结构：每个轮次的提示原文、实际发送文本、响应、评分与延迟。</p></div>
+      <div class="rcard reveal"><span class="tag md">Markdown</span><h4>评估报告</h4><p>汇总统计、授权范围、成功/失败用例表与可复现配置快照，便于邮件与 Wiki 流转。</p></div>
+      <div class="rcard reveal"><span class="tag html">HTML</span><h4>交互仪表盘</h4><p>自包含暗色页面：分布图、逐用例折叠详情、原始提示与变换后提示对照。</p></div>
+      <div class="rcard reveal"><span class="tag sarif">SARIF</span><h4>CI 安全门禁</h4><p>规则 LRTK001：每个成功绕过产生一条 warning，可被 SARIF 2.1.0 消费方直接摄取。</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="compliance">
+  <div class="wrap">
+    <div class="compliance reveal">
+      <div class="shield"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/><path d="M9 12l2 2 4-4"/></svg></div>
+      <div>
+        <h3>仅限授权测试 · 合规内建</h3>
+        <p style="color:var(--muted);font-size:.95rem">
+          LRTK 用于帮助模型提供方与防御方度量安全韧性，只能对自有或已获<strong style="color:var(--text)">书面授权</strong>的系统使用。
+          仓库内置的提示词均为无害占位符，仅用于驱动测试框架逻辑。
+        </p>
+        <ul>
+          <li>密钥只通过环境变量名 <code style="font-family:var(--mono)">api_key_env</code> 惰性读取，绝不写入配置、日志或报告</li>
+          <li>日志层强制脱敏：<code style="font-family:var(--mono)">api_key</code> / <code style="font-family:var(--mono)">authorization</code> / <code style="font-family:var(--mono)">token</code> 及 <code style="font-family:var(--mono)">sk-*</code>、<code style="font-family:var(--mono)">Bearer *</code> 模式</li>
+          <li>每次运行记录授权方、范围、联系人与授权单号，并随所有报告分发</li>
+          <li>离线 MockTarget 保证 CI 与新人演练不会误触真实模型服务</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="final-cta">
+  <div class="wrap reveal">
+    <h2>开始度量你的模型安全姿态</h2>
+    <p>克隆仓库，一分钟内完成第一次离线评估。</p>
+    <div class="hero-cta" style="justify-content:center;margin-bottom:0">
+      <a class="btn btn-primary" href="https://github.com/ganyuanlin/llm-redteam-kit" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        获取源码
+      </a>
+      <a class="btn btn-ghost" href="architecture.md">阅读架构文档</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-inner">
+    <div>© 2026 LRTK Maintainers · Apache License 2.0</div>
+    <div style="display:flex;gap:1.3rem;flex-wrap:wrap">
+      <a href="architecture.md">架构</a>
+      <a href="attack_strategies.md">攻击策略</a>
+      <a href="scoring.md">评分指南</a>
+      <a href="writing-plugins.md">插件开发</a>
+      <a href="compliance.md">合规说明</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  /* ---------- terminal typing animation ---------- */
+  var lines = [
+    { t: '<span class="prompt">$</span> <span class="cmd">pip install -e ".[dev]"</span>', d: 500 },
+    { t: '<span class="dim">Successfully installed llm-redteam-kit</span>', d: 700 },
+    { t: '<span class="prompt">$</span> <span class="cmd">lrtk run --config examples/configs/demo.yaml</span>', d: 900 },
+    { t: '<span class="ok">[run] Run finished run_660f46b98a9f status=completed</span>', d: 500 },
+    { t: '<span class="info">[reports] report.json · report.md · report.html</span>', d: 500 },
+    { t: '<span class="dim">2 turns · success rate 50% · persisted to ./runs/lrtk.db</span>', d: 700 },
+    { t: '<span class="prompt">$</span> <span class="cmd">lrtk serve --port 8000</span>', d: 600 },
+    { t: '<span class="warn">Uvicorn running on http://127.0.0.1:8000 (offline mock target)</span>', d: 120 }
+  ];
+  var term = document.getElementById("terminal");
+  if (term) {
+    var i = 0;
+    function next() {
+      if (i >= lines.length) {
+        var done = document.createElement("div");
+        done.className = "term-line";
+        done.innerHTML = '<span class="prompt">$</span> <span class="cursor"></span>';
+        term.appendChild(done);
+        return;
+      }
+      var div = document.createElement("div");
+      div.className = "term-line";
+      term.appendChild(div);
+      var raw = lines[i].t;
+      var j = 0;
+      /* strip-tags safe typing: we type character by character over the raw HTML
+         string but only when inside text nodes; simplest robust approach here is
+         to type the plain text then swap in the HTML at completion. */
+      var plain = raw.replace(/<[^>]+>/g, "");
+      (function type() {
+        if (j <= plain.length) {
+          div.textContent = plain.slice(0, j);
+          j += Math.max(1, Math.round(plain.length / 45));
+          setTimeout(type, 14);
+        } else {
+          div.innerHTML = raw;
+          i += 1;
+          setTimeout(next, lines[i - 1].d);
+        }
+      })();
+    }
+    next();
+  }
+
+  /* ---------- reveal on scroll ---------- */
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("visible");
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll(".reveal").forEach(function (el) { observer.observe(el); });
+
+  /* ---------- copy buttons ---------- */
+  document.querySelectorAll(".copy-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var target = document.getElementById(btn.getAttribute("data-copy"));
+      if (!target) return;
+      navigator.clipboard.writeText(target.innerText).then(function () {
+        var old = btn.textContent;
+        btn.textContent = "已复制 ✓";
+        setTimeout(function () { btn.textContent = old; }, 1600);
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+# Brings up the LRTK FastAPI service with a persistent data volume.
+# Usage: docker compose up --build
+services:
+  lrtk-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: llm-redteam-kit:latest
+    container_name: lrtk-api
+    ports:
+      - "8000:8000"
+    environment:
+      LRTK_OUTPUT_DIR: /data/runs
+      LRTK_LOG_LEVEL: INFO
+      # Real targets only - wire credentials via an .env file you control.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - lrtk-data:/data/runs
+    restart: unless-stopped
+    # Container runs as the non-root user baked into the image.
+    read_only: true
+    tmpfs:
+      - /tmp
+
+volumes:
+  lrtk-data:
