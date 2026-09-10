@@ -56,6 +56,8 @@ dev = [
     "pytest-asyncio>=0.24",
     "pytest-cov>=5.0",
     "respx>=0.21",
+    # Newer Starlette TestClient releases require httpx2 instead of httpx.
+    "httpx2",
     "ruff>=0.5",
     "mypy>=1.10",
     "types-PyYAML>=6.0",
@@ -114,7 +116,14 @@ plugins = ["sqlalchemy.ext.mypy.plugin"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "--cov=llm_redteam --cov-report=term-missing --cov-fail-under=80"
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # The FastAPI/Starlette/anyio TestClient stack emits deprecation warnings
+    # on import across releases; do not let third-party churn fail our suite.
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+]
 
 [tool.coverage.run]
 branch = true

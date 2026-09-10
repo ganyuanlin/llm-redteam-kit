@@ -4,6 +4,7 @@
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 [![Typing](https://img.shields.io/badge/typing-mypy-success.svg)](https://mypy.readthedocs.io/)
+[![Pages](https://img.shields.io/badge/website-GitHub%20Pages-38bdf8)](https://ganyuanlin.github.io/llm-redteam-kit/)
 
 **LLM Red Team Kit** is a modular, extensible and reproducible framework for
 **authorized** red-team testing of large language models. It helps security
